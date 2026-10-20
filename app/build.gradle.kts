@@ -11,16 +11,25 @@ android {
         applicationId = "com.arf.fuelpos"
         minSdk = 24
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
+    }
+
+    // Fixed signing key kept in the repo, so every new build installs as an
+    // update over the previous one (no need to uninstall).
+    signingConfigs {
+        create("release") {
+            storeFile = file("fuelpos-release.jks")
+            storePassword = "FuelPos2026"
+            keyAlias = "fuelpos"
+            keyPassword = "FuelPos2026"
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
-            // Signed with the debug key so the APK installs directly.
-            // For long-term production use, replace with your own keystore.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 

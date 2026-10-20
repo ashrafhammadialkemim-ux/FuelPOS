@@ -27,6 +27,10 @@
     <string name="hold_for_settings">اضغط مطولاً لفتح الإعدادات</string>
 
     <string name="press_again_to_exit">اضغط رجوع مرة أخرى للخروج</string>
+    <string name="preparing_file">جاري تجهيز الفاتورة…</string>
+    <string name="file_saved">تم حفظ %1$s في التنزيلات</string>
+    <string name="download_failed">تعذّر تنزيل الملف، حاول مرة أخرى</string>
+    <string name="no_app_to_open">لا يوجد تطبيق لفتح هذا الملف</string>
     <string name="downloading">جاري التنزيل…</string>
     <string name="download_started">بدأ تنزيل %1$s</string>
     <string name="storage_denied">لا يمكن حفظ الملف بدون صلاحية التخزين</string>

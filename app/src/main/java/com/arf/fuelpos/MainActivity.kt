@@ -2,7 +2,7 @@ package com.arf.fuelpos
 
 import android.Manifest
 import android.annotation.SuppressLint
-import android.app.DownloadManager
+import android.content.ContentValues
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
@@ -15,7 +15,15 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.os.CancellationSignal
 import android.os.Message
+import android.os.ParcelFileDescriptor
+import android.print.PageRange
+import android.print.PrintAttributes
+import android.print.PrintDocumentAdapter
+import android.print.PrintDocumentInfo
+import android.print.PrintManager
+import android.provider.MediaStore
 import android.text.InputType
 import android.view.View
 import android.view.ViewGroup
@@ -42,10 +50,19 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
+import java.net.HttpURLConnection
+import java.net.URL
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class MainActivity : AppCompatActivity() {
 
@@ -342,8 +359,14 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // ---------------- Downloads (reports, PDF, Excel) ----------------
+    // ---------------- Downloads (invoices, reports, PDF, Excel) ----------------
 
+    /**
+     * Oracle Reports sends invoices from URLs like ".../f?p=..." with no file name,
+     * so Android saved them as "f.bin". We download the file ourselves (with the
+     * APEX session cookies), detect a real PDF by its "%PDF" header, save it to
+     * Downloads with a proper .pdf name, and open the print dialog straight away.
+     */
     private fun startDownload(
         url: String, userAgent: String, contentDisposition: String?, mimeType: String?
     ) {
@@ -354,24 +377,138 @@ class MainActivity : AppCompatActivity() {
             storagePermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
             return
         }
-        try {
-            val fileName = URLUtil.guessFileName(url, contentDisposition, mimeType)
-            val request = DownloadManager.Request(Uri.parse(url)).apply {
-                setMimeType(mimeType)
-                addRequestHeader("Cookie", CookieManager.getInstance().getCookie(url) ?: "")
-                addRequestHeader("User-Agent", userAgent)
-                setTitle(fileName)
-                setDescription(getString(R.string.downloading))
-                setNotificationVisibility(
-                    DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED
-                )
-                setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
+        toast(getString(R.string.preparing_file))
+        val referer = webView.url
+        Thread {
+            try {
+                val conn = (URL(url).openConnection() as HttpURLConnection).apply {
+                    connectTimeout = 30_000
+                    readTimeout = 120_000
+                    instanceFollowRedirects = true
+                    setRequestProperty("User-Agent", userAgent)
+                    CookieManager.getInstance().getCookie(url)?.let {
+                        setRequestProperty("Cookie", it)
+                    }
+                    referer?.let { setRequestProperty("Referer", it) }
+                }
+                val headerDisposition = conn.getHeaderField("Content-Disposition") ?: contentDisposition
+                val headerMime = conn.contentType ?: mimeType
+
+                val temp = File(cacheDir, "download.tmp")
+                conn.inputStream.use { input ->
+                    FileOutputStream(temp).use { output -> input.copyTo(output) }
+                }
+                conn.disconnect()
+
+                val isPdf = temp.inputStream().use { ins ->
+                    val head = ByteArray(5)
+                    ins.read(head) == 5 && String(head, Charsets.US_ASCII) == "%PDF-"
+                }
+                val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+                val fileName: String
+                val finalMime: String
+                if (isPdf) {
+                    fileName = "Invoice_$stamp.pdf"
+                    finalMime = "application/pdf"
+                } else {
+                    var guessed = URLUtil.guessFileName(url, headerDisposition, headerMime)
+                    if (guessed.endsWith(".bin")) guessed = "File_$stamp.bin"
+                    fileName = guessed
+                    finalMime = headerMime?.substringBefore(';')?.trim()
+                        ?: "application/octet-stream"
+                }
+
+                val local = File(File(cacheDir, "docs").apply { mkdirs() }, fileName)
+                temp.copyTo(local, overwrite = true)
+                temp.delete()
+                saveToDownloads(local, fileName, finalMime)
+
+                runOnUiThread {
+                    toast(getString(R.string.file_saved, fileName))
+                    if (isPdf) printPdf(local) else openFile(local, finalMime)
+                }
+            } catch (e: Exception) {
+                runOnUiThread { toast(getString(R.string.download_failed)) }
             }
-            (getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager).enqueue(request)
-            toast(getString(R.string.download_started, fileName))
+        }.start()
+    }
+
+    /** Keep a copy in the phone's Downloads folder. */
+    private fun saveToDownloads(source: File, fileName: String, mime: String) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val values = ContentValues().apply {
+                    put(MediaStore.Downloads.DISPLAY_NAME, fileName)
+                    put(MediaStore.Downloads.MIME_TYPE, mime)
+                    put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                }
+                val uri = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                    ?: return
+                contentResolver.openOutputStream(uri)?.use { out ->
+                    source.inputStream().use { it.copyTo(out) }
+                }
+            } else {
+                @Suppress("DEPRECATION")
+                val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                dir.mkdirs()
+                source.copyTo(File(dir, fileName), overwrite = true)
+            }
+        } catch (_: Exception) {
+            // Saving a copy is a bonus; printing still works from the app's own copy.
+        }
+    }
+
+    /** Send the PDF straight to Android's print dialog (printer, or "Save as PDF"). */
+    private fun printPdf(file: File) {
+        val printManager = getSystemService(Context.PRINT_SERVICE) as PrintManager
+        val adapter = object : PrintDocumentAdapter() {
+            override fun onLayout(
+                oldAttributes: PrintAttributes?, newAttributes: PrintAttributes?,
+                cancellationSignal: CancellationSignal?, callback: PrintDocumentAdapter.LayoutResultCallback,
+                extras: Bundle?
+            ) {
+                if (cancellationSignal?.isCanceled == true) {
+                    callback.onLayoutCancelled(); return
+                }
+                val info = PrintDocumentInfo.Builder(file.name)
+                    .setContentType(PrintDocumentInfo.CONTENT_TYPE_DOCUMENT)
+                    .build()
+                callback.onLayoutFinished(info, true)
+            }
+
+            override fun onWrite(
+                pages: Array<out PageRange>?, destination: ParcelFileDescriptor,
+                cancellationSignal: CancellationSignal?, callback: PrintDocumentAdapter.WriteResultCallback
+            ) {
+                try {
+                    FileInputStream(file).use { input ->
+                        FileOutputStream(destination.fileDescriptor).use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                    callback.onWriteFinished(arrayOf(PageRange.ALL_PAGES))
+                } catch (e: Exception) {
+                    callback.onWriteFailed(e.message)
+                }
+            }
+        }
+        try {
+            printManager.print(file.nameWithoutExtension, adapter, PrintAttributes.Builder().build())
         } catch (e: Exception) {
-            // Fallback: let the system browser handle it
-            openExternally(Uri.parse(url))
+            openFile(file, "application/pdf")
+        }
+    }
+
+    private fun openFile(file: File, mime: String) {
+        try {
+            val uri = FileProvider.getUriForFile(this, "$packageName.files", file)
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, mime)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(Intent.createChooser(intent, file.name))
+        } catch (e: Exception) {
+            toast(getString(R.string.no_app_to_open))
         }
     }
 
