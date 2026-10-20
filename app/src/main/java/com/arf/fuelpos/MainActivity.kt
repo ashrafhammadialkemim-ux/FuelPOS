@@ -46,6 +46,7 @@ import android.widget.FrameLayout
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.webkit.CookieManager
+import android.webkit.JavascriptInterface
 import android.webkit.URLUtil
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
@@ -84,6 +85,11 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLEncoder
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
+import org.json.JSONArray
+import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -106,6 +112,62 @@ class MainActivity : AppCompatActivity() {
          * Google Website Translator, injected into every page (and same-origin APEX dialog
          * iframes) when a translation language is chosen. Google's own bar is hidden.
          */
+        /**
+         * Second pass: anything Google leaves in Arabic (customer names, drop-down options,
+         * placeholders, dialog iframes) is collected and translated through the app.
+         */
+        private const val FALLBACK_JS = """
+(function(){
+  if(window.__fpX){ window.__fpX.scan(); return; }
+  var AR=/[\u0600-\u06FF]/, map={}, asked={};
+  function docs(){ var a=[document], f=document.querySelectorAll('iframe');
+    for(var i=0;i<f.length;i++){ try{ var d=f[i].contentDocument; if(d&&d.body) a.push(d); }catch(e){} } return a; }
+  function key(s){ return (s||'').replace(/\s+/g,' ').trim(); }
+  function each(fn){
+    docs().forEach(function(doc){
+      var w=doc.createTreeWalker(doc.body,NodeFilter.SHOW_TEXT,null,false), n;
+      while((n=w.nextNode())){
+        var p=n.parentNode; if(!p) continue; var t=p.nodeName;
+        if(t==='SCRIPT'||t==='STYLE'||t==='TEXTAREA'||t==='NOSCRIPT') continue;
+        if(AR.test(n.nodeValue)) fn('t',n,key(n.nodeValue));
+      }
+      var o=doc.querySelectorAll('option');
+      for(var i=0;i<o.length;i++){ if(AR.test(o[i].text)) fn('o',o[i],key(o[i].text)); }
+      var ph=doc.querySelectorAll('[placeholder]');
+      for(var j=0;j<ph.length;j++){ var v=ph[j].getAttribute('placeholder'); if(v&&AR.test(v)) fn('p',ph[j],key(v)); }
+    });
+  }
+  function apply(kind,el,k){
+    var v=map[k]; if(!v) return false;
+    if(kind==='t'){ var s=el.nodeValue, lead=s.match(/^\s*/)[0], tail=s.match(/\s*$/)[0]; el.nodeValue=lead+v+tail; }
+    else if(kind==='o'){ el.text=v; }
+    else { el.setAttribute('placeholder',v); }
+    return true;
+  }
+  function scan(){
+    var need=[];
+    each(function(kind,el,k){
+      if(!k||k.length>500) return;
+      if(!apply(kind,el,k)&&!asked[k]){ asked[k]=1; need.push(k); }
+    });
+    if(need.length&&window.FPTrans){ for(var i=0;i<need.length;i+=40) FPTrans.request(JSON.stringify(need.slice(i,i+40))); }
+  }
+  var timer=null;
+  function later(ms){ clearTimeout(timer); timer=setTimeout(scan,ms); }
+  window.__fpX={scan:scan};
+  window.fpApply=function(obj){ for(var k in obj){ map[k]=obj[k]; } later(80); };
+  later(2500);
+  if(document.body) new MutationObserver(function(){ later(900); }).observe(document.body,{childList:true,subtree:true,characterData:true});
+  setInterval(function(){ if(!document.hidden) scan(); },4000);
+})();
+"""
+
+        // Shared across screen rotations / language switches
+        private val trCache = ConcurrentHashMap<String, String>()
+        private val trInFlight: MutableSet<String> = ConcurrentHashMap.newKeySet()
+        private val trPool = Executors.newFixedThreadPool(4)
+        private val ARABIC = Regex("[\\u0600-\\u06FF]")
+
         private const val TRANSLATE_JS = """
 (function(){
   var L='__LANG__';
@@ -291,6 +353,8 @@ class MainActivity : AppCompatActivity() {
             userAgentString = userAgentString.replace("; wv", "")
         }
 
+        webView.addJavascriptInterface(TranslateBridge(), "FPTrans")
+        loadTranslationCache()
         webView.webViewClient = KioskWebViewClient()
         webView.webChromeClient = KioskChromeClient()
         webView.setDownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
@@ -408,28 +472,32 @@ class MainActivity : AppCompatActivity() {
         override fun onJsAlert(
             view: WebView, url: String?, message: String?, result: android.webkit.JsResult
         ): Boolean {
-            styledDialog(
-                icon = R.drawable.ic_info, accent = R.color.primary,
-                title = getString(R.string.alert_title), message = message,
-                primaryText = getString(R.string.ok), primaryColor = R.color.primary,
-                onPrimary = { result.confirm() },
-                onDismiss = { result.confirm() }
-            )
+            translateMessage(message) { msg ->
+                styledDialog(
+                    icon = R.drawable.ic_info, accent = R.color.primary,
+                    title = getString(R.string.alert_title), message = msg,
+                    primaryText = getString(R.string.ok), primaryColor = R.color.primary,
+                    onPrimary = { result.confirm() },
+                    onDismiss = { result.confirm() }
+                )
+            }
             return true
         }
 
         override fun onJsConfirm(
             view: WebView, url: String?, message: String?, result: android.webkit.JsResult
         ): Boolean {
-            styledDialog(
-                icon = R.drawable.ic_question, accent = R.color.primary,
-                title = getString(R.string.confirm_title), message = message,
-                primaryText = getString(R.string.yes_continue), primaryColor = R.color.primary,
-                onPrimary = { result.confirm() },
-                secondaryText = getString(R.string.cancel), secondaryColor = R.color.text_secondary,
-                onSecondary = { result.cancel() },
-                onDismiss = { result.cancel() }
-            )
+            translateMessage(message) { msg ->
+                styledDialog(
+                    icon = R.drawable.ic_question, accent = R.color.primary,
+                    title = getString(R.string.confirm_title), message = msg,
+                    primaryText = getString(R.string.yes_continue), primaryColor = R.color.primary,
+                    onPrimary = { result.confirm() },
+                    secondaryText = getString(R.string.cancel), secondaryColor = R.color.text_secondary,
+                    onSecondary = { result.cancel() },
+                    onDismiss = { result.cancel() }
+                )
+            }
             return true
         }
 
@@ -938,6 +1006,94 @@ class MainActivity : AppCompatActivity() {
         val lang = pageLang()
         if (lang.isEmpty()) return
         view.evaluateJavascript(TRANSLATE_JS.replace("__LANG__", lang), null)
+        view.evaluateJavascript(FALLBACK_JS, null)
+    }
+
+    /** Called from the page with Arabic strings Google didn't translate. */
+    inner class TranslateBridge {
+        @JavascriptInterface
+        fun request(json: String) {
+            val lang = pageLang()
+            if (lang.isEmpty()) return
+            val list = try { JSONArray(json) } catch (e: Exception) { return }
+            val ready = JSONObject()
+            for (i in 0 until list.length()) {
+                val text = list.optString(i)
+                if (text.isBlank()) continue
+                val k = "$lang|$text"
+                val cached = trCache[k]
+                if (cached != null) {
+                    ready.put(text, cached)
+                } else if (trInFlight.add(k)) {
+                    trPool.execute {
+                        val r = googleTranslate(text, lang)
+                        trInFlight.remove(k)
+                        if (r != null) {
+                            trCache[k] = r
+                            pushTranslations(JSONObject().put(text, r))
+                        }
+                    }
+                }
+            }
+            if (ready.length() > 0) pushTranslations(ready)
+        }
+    }
+
+    private fun pushTranslations(o: JSONObject) = runOnUiThread {
+        if (!isFinishing && !isDestroyed) webView.evaluateJavascript("window.fpApply&&fpApply($o)", null)
+    }
+
+    /** Google Translate (public web endpoint). Returns null on any failure. */
+    private fun googleTranslate(text: String, target: String): String? = try {
+        val url = URL(
+            "https://translate.googleapis.com/translate_a/single?client=gtx&sl=ar&tl=$target&dt=t&q=" +
+                URLEncoder.encode(text, "UTF-8")
+        )
+        val c = (url.openConnection() as HttpURLConnection).apply {
+            connectTimeout = 10_000; readTimeout = 15_000
+            setRequestProperty("User-Agent", "Mozilla/5.0")
+        }
+        val body = c.inputStream.bufferedReader().use { it.readText() }
+        c.disconnect()
+        val parts = JSONArray(body).getJSONArray(0)
+        val sb = StringBuilder()
+        for (i in 0 until parts.length()) parts.optJSONArray(i)?.let { sb.append(it.optString(0)) }
+        sb.toString().trim().ifEmpty { null }
+    } catch (e: Exception) { null }
+
+    /** Translate a system message (alert / confirm) before showing it, when a language is chosen. */
+    private fun translateMessage(msg: String?, done: (String?) -> Unit) {
+        val lang = pageLang()
+        if (lang.isEmpty() || msg.isNullOrBlank() || !ARABIC.containsMatchIn(msg)) { done(msg); return }
+        trPool.execute {
+            val k = "$lang|$msg"
+            val r = trCache[k] ?: googleTranslate(msg, lang)?.also { trCache[k] = it }
+            runOnUiThread { if (!isFinishing) done(r ?: msg) }
+        }
+    }
+
+    private fun cacheFile() = File(filesDir, "translations.json")
+
+    private fun loadTranslationCache() {
+        if (trCache.isNotEmpty()) return
+        trPool.execute {
+            try {
+                val o = JSONObject(cacheFile().readText())
+                o.keys().forEach { trCache[it] = o.getString(it) }
+            } catch (_: Exception) {}
+        }
+    }
+
+    private fun saveTranslationCache() {
+        if (trCache.isEmpty()) return
+        val snapshot = HashMap(trCache)
+        trPool.execute {
+            try {
+                val o = JSONObject()
+                snapshot.entries.take(8000).forEach { o.put(it.key, it.value) }
+                cacheFile().writeText(o.toString())
+            } catch (_: Exception) {}
+        }
     }
 
     /** Language list for workers (no password needed). */
@@ -1048,6 +1204,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onPause() {
+        saveTranslationCache()
         webView.onPause()
         CookieManager.getInstance().flush()
         super.onPause()
