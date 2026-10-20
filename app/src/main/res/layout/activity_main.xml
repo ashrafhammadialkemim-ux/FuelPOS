@@ -88,18 +88,47 @@
             android:textSize="15sp" />
     </LinearLayout>
 
-    <!-- Small, semi-transparent admin gear (PIN protected) -->
-    <ImageButton
-        android:id="@+id/settingsButton"
-        android:layout_width="40dp"
-        android:layout_height="40dp"
+    <!-- Floating mini toolbar: Home + admin gear. Drag it anywhere. -->
+    <LinearLayout
+        android:id="@+id/fabBar"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
         android:layout_gravity="bottom|start"
-        android:layout_margin="8dp"
-        android:alpha="0.25"
-        android:background="@drawable/bg_circle"
-        android:contentDescription="@string/server_settings"
-        android:padding="8dp"
-        android:scaleType="fitCenter"
-        android:src="@drawable/ic_settings" />
+        android:layout_marginStart="10dp"
+        android:layout_marginBottom="70dp"
+        android:background="@drawable/bg_fab_bar"
+        android:elevation="6dp"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:padding="4dp">
+
+        <ImageButton
+            android:id="@+id/homeButton"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:background="@drawable/bg_fab_btn"
+            android:contentDescription="@string/home"
+            android:padding="10dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_home" />
+
+        <View
+            android:layout_width="24dp"
+            android:layout_height="1dp"
+            android:layout_marginTop="2dp"
+            android:layout_marginBottom="2dp"
+            android:background="#33FFFFFF" />
+
+        <ImageButton
+            android:id="@+id/settingsButton"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:alpha="0.7"
+            android:background="@drawable/bg_fab_btn"
+            android:contentDescription="@string/server_settings"
+            android:padding="12dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_settings" />
+    </LinearLayout>
 
 </FrameLayout>

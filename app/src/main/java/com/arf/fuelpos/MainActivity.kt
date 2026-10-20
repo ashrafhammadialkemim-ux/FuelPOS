@@ -7,8 +7,11 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
+import android.content.res.ColorStateList
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.Uri
@@ -25,7 +28,9 @@ import android.print.PrintDocumentInfo
 import android.print.PrintManager
 import android.provider.MediaStore
 import android.text.InputType
+import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.webkit.CookieManager
@@ -41,6 +46,7 @@ import android.webkit.WebViewClient
 import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageButton
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
@@ -55,6 +61,8 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+import com.google.android.material.button.MaterialButton
+import kotlin.math.hypot
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -75,6 +83,11 @@ class MainActivity : AppCompatActivity() {
         private const val KEY_URL = "server_url"
         private const val KEY_PIN = "admin_pin"
         private const val KEY_FIRST_RUN_DONE = "first_run_done"
+        private const val KEY_HOME = "home_url"
+        private const val KEY_ZOOM = "text_zoom"
+        private const val KEY_FAB_X = "fab_x"
+        private const val KEY_FAB_Y = "fab_y"
+        private val ZOOM_LEVELS = intArrayOf(85, 100, 115, 130)
     }
 
     private lateinit var prefs: SharedPreferences
@@ -216,7 +229,7 @@ class MainActivity : AppCompatActivity() {
             builtInZoomControls = true
             displayZoomControls = false
             setSupportZoom(true)
-            textZoom = 100
+            textZoom = prefs.getInt(KEY_ZOOM, 100)
             defaultTextEncodingName = "utf-8"
             // Present as normal mobile Chrome so APEX serves its standard pages
             userAgentString = userAgentString.replace("; wv", "")
@@ -338,23 +351,45 @@ class MainActivity : AppCompatActivity() {
         override fun onJsAlert(
             view: WebView, url: String?, message: String?, result: android.webkit.JsResult
         ): Boolean {
-            AlertDialog.Builder(this@MainActivity)
-                .setMessage(message)
-                .setPositiveButton(android.R.string.ok) { _, _ -> result.confirm() }
-                .setOnCancelListener { result.cancel() }
-                .show()
+            styledDialog(
+                icon = R.drawable.ic_info, accent = R.color.primary,
+                title = getString(R.string.alert_title), message = message,
+                primaryText = getString(R.string.ok), primaryColor = R.color.primary,
+                onPrimary = { result.confirm() },
+                onDismiss = { result.confirm() }
+            )
             return true
         }
 
         override fun onJsConfirm(
             view: WebView, url: String?, message: String?, result: android.webkit.JsResult
         ): Boolean {
-            AlertDialog.Builder(this@MainActivity)
-                .setMessage(message)
-                .setPositiveButton(android.R.string.ok) { _, _ -> result.confirm() }
-                .setNegativeButton(android.R.string.cancel) { _, _ -> result.cancel() }
-                .setOnCancelListener { result.cancel() }
-                .show()
+            styledDialog(
+                icon = R.drawable.ic_question, accent = R.color.primary,
+                title = getString(R.string.confirm_title), message = message,
+                primaryText = getString(R.string.yes_continue), primaryColor = R.color.primary,
+                onPrimary = { result.confirm() },
+                secondaryText = getString(R.string.cancel), secondaryColor = R.color.text_secondary,
+                onSecondary = { result.cancel() },
+                onDismiss = { result.cancel() }
+            )
+            return true
+        }
+
+        /** "Leave this page?" (APEX unsaved-changes warning), as an in-app dialog. */
+        override fun onJsBeforeUnload(
+            view: WebView, url: String?, message: String?, result: android.webkit.JsResult
+        ): Boolean {
+            styledDialog(
+                icon = R.drawable.ic_leave, accent = R.color.danger,
+                title = getString(R.string.leave_title),
+                message = getString(R.string.leave_message),
+                primaryText = getString(R.string.stay_here), primaryColor = R.color.primary,
+                onPrimary = { result.cancel() },          // stay on the page
+                secondaryText = getString(R.string.leave_anyway), secondaryColor = R.color.danger,
+                onSecondary = { result.confirm() },       // leave
+                onDismiss = { result.cancel() }
+            )
             return true
         }
     }
@@ -532,12 +567,132 @@ class MainActivity : AppCompatActivity() {
     private fun setupButtons() {
         findViewById<Button>(R.id.retryButton).setOnClickListener { loadHome() }
         findViewById<TextView>(R.id.errorSettings).setOnClickListener { askPinThenSettings() }
-        findViewById<ImageButton>(R.id.settingsButton).setOnClickListener {
-            toast(getString(R.string.hold_for_settings))
+
+        val bar = findViewById<View>(R.id.fabBar)
+        val home = findViewById<ImageButton>(R.id.homeButton)
+        val gear = findViewById<ImageButton>(R.id.settingsButton)
+
+        home.setOnClickListener { goHome() }
+        home.setOnLongClickListener { toast(getString(R.string.drag_hint)); true }
+        gear.setOnClickListener { toast(getString(R.string.hold_for_settings)) }
+        gear.setOnLongClickListener { askPinThenSettings(); true }
+
+        makeDraggable(bar, listOf(home, gear))
+        bar.post { restoreFabPosition(bar) }
+    }
+
+    /** Home page of the system, keeping the current APEX session (no re-login). */
+    private fun homeUrl(): String {
+        val base = prefs.getString(KEY_HOME, null) ?: savedUrl()
+        val session = Regex("[?&]p=[^:&]*:[^:&]*:(\\d+)")
+            .find(webView.url ?: "")?.groupValues?.get(1)
+        if (session.isNullOrEmpty() || session == "0") return base
+        return Regex("([?&]p=[^:&]*:[^:&]*:)(\\d*)")
+            .replace(base) { it.groupValues[1] + session }
+    }
+
+    private fun goHome() {
+        if (!isOnline()) { showError(getString(R.string.error_no_internet)); return }
+        hideError()
+        webView.loadUrl(homeUrl())
+    }
+
+    @SuppressLint("ClickableViewAccessibility")
+    private fun makeDraggable(container: View, handles: List<View>) {
+        val slop = ViewConfiguration.get(this).scaledTouchSlop * 2
+        var offX = 0f; var offY = 0f; var downX = 0f; var downY = 0f; var dragging = false
+        val listener = View.OnTouchListener { v, e ->
+            val parent = container.parent as View
+            when (e.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    downX = e.rawX; downY = e.rawY
+                    offX = container.x - e.rawX; offY = container.y - e.rawY
+                    dragging = false
+                    false
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    if (!dragging && hypot(e.rawX - downX, e.rawY - downY) > slop) {
+                        dragging = true
+                        v.cancelLongPress(); v.isPressed = false
+                    }
+                    if (dragging) {
+                        container.x = (e.rawX + offX).coerceIn(0f, (parent.width - container.width).toFloat())
+                        container.y = (e.rawY + offY).coerceIn(0f, (parent.height - container.height).toFloat())
+                        true
+                    } else false
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    if (dragging) {
+                        v.isPressed = false
+                        val fx = container.x / (parent.width - container.width).coerceAtLeast(1)
+                        val fy = container.y / (parent.height - container.height).coerceAtLeast(1)
+                        prefs.edit().putFloat(KEY_FAB_X, fx).putFloat(KEY_FAB_Y, fy).apply()
+                        dragging = false
+                        true
+                    } else false
+                }
+                else -> false
+            }
         }
-        findViewById<ImageButton>(R.id.settingsButton).setOnLongClickListener {
-            askPinThenSettings(); true
+        handles.forEach { it.setOnTouchListener(listener) }
+    }
+
+    private fun restoreFabPosition(bar: View) {
+        val fx = prefs.getFloat(KEY_FAB_X, -1f)
+        val fy = prefs.getFloat(KEY_FAB_Y, -1f)
+        if (fx < 0f || fy < 0f) return
+        val parent = bar.parent as View
+        bar.x = fx * (parent.width - bar.width)
+        bar.y = fy * (parent.height - bar.height)
+    }
+
+    // ---------------- Styled in-app dialogs ----------------
+
+    private fun styledDialog(
+        icon: Int, accent: Int, title: String, message: String?,
+        primaryText: String, primaryColor: Int, onPrimary: () -> Unit,
+        secondaryText: String? = null, secondaryColor: Int = R.color.text_secondary,
+        onSecondary: () -> Unit = {}, onDismiss: () -> Unit = {}
+    ) {
+        val view = layoutInflater.inflate(R.layout.dialog_styled, null)
+        val accentColor = ContextCompat.getColor(this, accent)
+        view.findViewById<View>(R.id.dlgIconBg).backgroundTintList =
+            ColorStateList.valueOf(accentColor)
+        view.findViewById<ImageView>(R.id.dlgIcon).setImageResource(icon)
+        view.findViewById<TextView>(R.id.dlgTitle).text = title
+        view.findViewById<TextView>(R.id.dlgMessage).apply {
+            text = message
+            visibility = if (message.isNullOrBlank()) View.GONE else View.VISIBLE
         }
+
+        val dialog = AlertDialog.Builder(this).setView(view).setCancelable(true).create()
+        var handled = false
+
+        view.findViewById<MaterialButton>(R.id.dlgPrimary).apply {
+            text = primaryText
+            backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(context, primaryColor))
+            setTextColor(Color.WHITE)
+            setOnClickListener { handled = true; dialog.dismiss(); onPrimary() }
+        }
+        view.findViewById<MaterialButton>(R.id.dlgSecondary).apply {
+            if (secondaryText == null) {
+                visibility = View.GONE
+            } else {
+                val c = ContextCompat.getColor(context, secondaryColor)
+                text = secondaryText
+                setTextColor(c)
+                strokeColor = ColorStateList.valueOf(c)
+                rippleColor = ColorStateList.valueOf(c and 0x33FFFFFF)
+                setOnClickListener { handled = true; dialog.dismiss(); onSecondary() }
+            }
+        }
+        dialog.setOnDismissListener { if (!handled) { handled = true; onDismiss() } }
+        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        dialog.show()
+        dialog.window?.setLayout(
+            (resources.displayMetrics.widthPixels * 0.88).toInt().coerceAtMost(dp(440)),
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        )
     }
 
     private fun setupBackNavigation() {
@@ -628,30 +783,49 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showSettingsDialog() {
+        val items = arrayOf(
+            getString(R.string.menu_url),
+            getString(R.string.menu_zoom),
+            getString(R.string.menu_set_home),
+            getString(R.string.menu_reset_home),
+            getString(R.string.menu_pin),
+            getString(R.string.menu_reset_buttons)
+        )
+        AlertDialog.Builder(this)
+            .setTitle(R.string.settings_menu_title)
+            .setItems(items) { _, which ->
+                when (which) {
+                    0 -> showUrlDialog()
+                    1 -> showZoomDialog()
+                    2 -> {
+                        webView.url?.let { prefs.edit().putString(KEY_HOME, it).apply() }
+                        toast(getString(R.string.home_set))
+                    }
+                    3 -> {
+                        prefs.edit().remove(KEY_HOME).apply()
+                        toast(getString(R.string.home_reset))
+                    }
+                    4 -> showPinDialog()
+                    5 -> {
+                        prefs.edit().remove(KEY_FAB_X).remove(KEY_FAB_Y).apply()
+                        findViewById<View>(R.id.fabBar).apply { translationX = 0f; translationY = 0f }
+                    }
+                }
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun showUrlDialog() {
         val urlInput = EditText(this).apply {
             setText(savedUrl())
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
             textDirection = View.TEXT_DIRECTION_LTR
             setSelection(text.length)
         }
-        val pinInput = EditText(this).apply {
-            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
-            hint = getString(R.string.new_pin_hint)
-        }
-        val box = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(8), dp(20), 0)
-            addView(TextView(context).apply { text = getString(R.string.server_url_label) })
-            addView(urlInput)
-            addView(TextView(context).apply {
-                text = getString(R.string.pin_change_label); setPadding(0, dp(12), 0, 0)
-            })
-            addView(pinInput)
-        }
-
         AlertDialog.Builder(this)
-            .setTitle(R.string.server_settings)
-            .setView(box)
+            .setTitle(R.string.server_url_label)
+            .setView(wrap(urlInput))
             .setPositiveButton(R.string.save) { _, _ ->
                 var url = urlInput.text.toString().trim()
                 if (url.isNotEmpty() && !url.startsWith("http://") && !url.startsWith("https://")) {
@@ -660,21 +834,53 @@ class MainActivity : AppCompatActivity() {
                 if (url.isEmpty() || !URLUtil.isValidUrl(url)) {
                     toast(getString(R.string.invalid_url)); return@setPositiveButton
                 }
-                val editor = prefs.edit().putString(KEY_URL, url)
-                val newPin = pinInput.text.toString().trim()
-                if (newPin.length >= 4) editor.putString(KEY_PIN, newPin)
-                editor.apply()
+                prefs.edit().putString(KEY_URL, url).remove(KEY_HOME).apply()
                 toast(getString(R.string.saved))
                 webView.clearHistory()
                 loadHome()
             }
             .setNeutralButton(R.string.reset_default) { _, _ ->
-                prefs.edit().putString(KEY_URL, DEFAULT_URL).apply()
+                prefs.edit().putString(KEY_URL, DEFAULT_URL).remove(KEY_HOME).apply()
                 toast(getString(R.string.reset_done))
                 webView.clearHistory()
                 loadHome()
             }
-            .setNegativeButton(android.R.string.cancel, null)
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun showZoomDialog() {
+        val labels = arrayOf(
+            getString(R.string.zoom_small), getString(R.string.zoom_normal),
+            getString(R.string.zoom_large), getString(R.string.zoom_xlarge)
+        )
+        val current = ZOOM_LEVELS.indexOf(prefs.getInt(KEY_ZOOM, 100)).coerceAtLeast(0)
+        AlertDialog.Builder(this)
+            .setTitle(R.string.menu_zoom)
+            .setSingleChoiceItems(labels, current) { d, which ->
+                val z = ZOOM_LEVELS[which]
+                prefs.edit().putInt(KEY_ZOOM, z).apply()
+                webView.settings.textZoom = z
+                d.dismiss()
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun showPinDialog() {
+        val pinInput = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            hint = getString(R.string.new_pin_hint)
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.menu_pin)
+            .setView(wrap(pinInput))
+            .setPositiveButton(R.string.save) { _, _ ->
+                val pin = pinInput.text.toString().trim()
+                if (pin.length < 4) toast(getString(R.string.pin_too_short))
+                else { prefs.edit().putString(KEY_PIN, pin).apply(); toast(getString(R.string.saved)) }
+            }
+            .setNegativeButton(R.string.cancel, null)
             .show()
     }
 

@@ -15,7 +15,7 @@
     <string name="wrong_pin">الرمز السري غير صحيح</string>
     <string name="server_url_label">رابط النظام:</string>
     <string name="pin_change_label">رمز سري جديد (اختياري، 4 أرقام على الأقل):</string>
-    <string name="new_pin_hint">اتركه فارغاً لعدم التغيير</string>
+    <string name="new_pin_hint">4 أرقام على الأقل</string>
     <string name="first_run_title">إعداد التطبيق لأول مرة</string>
     <string name="first_run_message">اكتب رابط النظام المالي ثم اضغط «حفظ وفتح». لن يُطلب منك مرة أخرى.</string>
     <string name="save_and_open">حفظ وفتح</string>
@@ -36,4 +36,30 @@
     <string name="storage_denied">لا يمكن حفظ الملف بدون صلاحية التخزين</string>
     <string name="no_file_app">لا يوجد تطبيق لاختيار الملفات</string>
     <string name="cannot_open_link">لا يمكن فتح هذا الرابط</string>
+
+    <string name="home">الصفحة الرئيسية</string>
+    <string name="leave_title">مغادرة الصفحة؟</string>
+    <string name="leave_message">لديك بيانات لم يتم حفظها بعد.\nإذا غادرت الآن قد تضيع هذه البيانات.</string>
+    <string name="stay_here">البقاء ومتابعة العمل</string>
+    <string name="leave_anyway">مغادرة بدون حفظ</string>
+    <string name="alert_title">تنبيه</string>
+    <string name="confirm_title">تأكيد</string>
+    <string name="ok">حسناً</string>
+    <string name="yes_continue">نعم، متابعة</string>
+    <string name="cancel">إلغاء</string>
+    <string name="settings_menu_title">الإعدادات</string>
+    <string name="menu_url">رابط النظام</string>
+    <string name="menu_zoom">حجم عرض الصفحة</string>
+    <string name="menu_set_home">جعل الصفحة الحالية هي الرئيسية</string>
+    <string name="menu_reset_home">إعادة الصفحة الرئيسية للافتراضي</string>
+    <string name="menu_pin">تغيير الرمز السري</string>
+    <string name="menu_reset_buttons">إعادة الأزرار العائمة لمكانها</string>
+    <string name="zoom_small">صغير</string>
+    <string name="zoom_normal">عادي</string>
+    <string name="zoom_large">كبير</string>
+    <string name="zoom_xlarge">كبير جداً</string>
+    <string name="home_set">تم تعيين هذه الصفحة كصفحة رئيسية</string>
+    <string name="home_reset">تمت إعادة الصفحة الرئيسية للافتراضي</string>
+    <string name="pin_too_short">الرمز يجب أن يكون 4 أرقام على الأقل</string>
+    <string name="drag_hint">اسحب الأزرار لأي مكان يناسبك</string>
 </resources>
