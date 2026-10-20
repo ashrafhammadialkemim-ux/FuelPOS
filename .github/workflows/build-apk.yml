@@ -4,6 +4,9 @@ on:
   push:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     # Ubuntu 24.04 runners ship with the Android SDK preinstalled
@@ -33,3 +36,11 @@ jobs:
         with:
           name: FuelPOS-APK
           path: FuelPOS.apk
+
+      - name: Publish direct download link
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: FuelPOS v1.0.${{ github.run_number }}
+          make_latest: true
+          files: FuelPOS.apk
