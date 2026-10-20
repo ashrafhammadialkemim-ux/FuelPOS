@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Allow plain HTTP (cleartext) to every host and port, including arfksa.dyndns.org:987 -->
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">arfksa.dyndns.org</domain>
+        <domain includeSubdomains="true">dyndns.org</domain>
+    </domain-config>
+</network-security-config>
