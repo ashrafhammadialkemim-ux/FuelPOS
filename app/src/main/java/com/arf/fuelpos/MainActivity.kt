@@ -15,6 +15,7 @@ import android.content.res.ColorStateList
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
 import androidx.core.graphics.ColorUtils
@@ -34,6 +35,8 @@ import android.print.PrintDocumentInfo
 import android.print.PrintManager
 import android.provider.MediaStore
 import android.text.InputType
+import android.util.TypedValue
+import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
@@ -58,12 +61,16 @@ import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
+import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.app.AppCompatDelegate
+import androidx.core.os.LocaleListCompat
+import com.google.android.material.bottomsheet.BottomSheetDialog
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.core.view.WindowCompat
@@ -94,7 +101,49 @@ class MainActivity : AppCompatActivity() {
         private const val KEY_ZOOM = "text_zoom"
         private const val KEY_FAB_X = "fab_x"
         private const val KEY_FAB_Y = "fab_y"
-        private val ZOOM_LEVELS = intArrayOf(85, 100, 115, 130)
+
+        /**
+         * Google Website Translator, injected into every page (and same-origin APEX dialog
+         * iframes) when a translation language is chosen. Google's own bar is hidden.
+         */
+        private const val TRANSLATE_JS = """
+(function(){
+  var L='__LANG__';
+  function css(doc){
+    if(doc.getElementById('fp-gt-css'))return;
+    var st=doc.createElement('style');st.id='fp-gt-css';
+    st.textContent='iframe.skiptranslate,.goog-te-banner-frame,#goog-gt-tt,.goog-te-balloon-frame,.goog-tooltip,.VIpgJd-ZVi9od-ORHb-OEVmcd,.VIpgJd-ZVi9od-aZ2wEe-wOHMyf,.VIpgJd-ZVi9od-l4eHX-hSRGPd,#google_translate_element{display:none!important;visibility:hidden!important}body{top:0!important}.goog-text-highlight,.VIpgJd-yAWNEb-VIpgJd-fmcmS-sn54Q{background:none!important;box-shadow:none!important}';
+    (doc.head||doc.documentElement).appendChild(st);
+  }
+  function setup(win){
+    try{
+      var doc=win.document; if(!doc||!doc.body)return;
+      css(doc);
+      if(win.__fpGT)return; win.__fpGT=1;
+      var d=doc.createElement('div');d.id='google_translate_element';doc.body.appendChild(d);
+      win.fpGTInit=function(){
+        try{ new win.google.translate.TranslateElement({pageLanguage:'ar',autoDisplay:false},'google_translate_element'); }catch(e){}
+        var n=0,t=win.setInterval(function(){
+          n++; var s=doc.querySelector('select.goog-te-combo');
+          if(s&&s.options.length>1){ if(s.value!==L){ s.value=L; s.dispatchEvent(new Event('change')); } win.clearInterval(t); }
+          if(n>80)win.clearInterval(t);
+        },250);
+      };
+      var sc=doc.createElement('script');
+      sc.src='https://translate.google.com/translate_a/element.js?cb=fpGTInit';
+      (doc.head||doc.body).appendChild(sc);
+    }catch(e){}
+  }
+  function hook(fr){
+    if(fr.__fpL)return; fr.__fpL=1;
+    fr.addEventListener('load',function(){ try{ setup(fr.contentWindow); }catch(e){} });
+    try{ if(fr.contentWindow.document.readyState==='complete') setup(fr.contentWindow); }catch(e){}
+  }
+  function frames(){ var f=document.querySelectorAll('iframe'); for(var i=0;i<f.length;i++) hook(f[i]); }
+  setup(window); frames();
+  if(!window.__fpObs&&document.body){ window.__fpObs=new MutationObserver(frames); window.__fpObs.observe(document.body,{childList:true,subtree:true}); }
+})();
+"""
     }
 
     private lateinit var prefs: SharedPreferences
@@ -136,9 +185,6 @@ class MainActivity : AppCompatActivity() {
         progressBar = findViewById(R.id.progressBar)
         errorView = findViewById(R.id.errorView)
         errorMessage = findViewById(R.id.errorMessage)
-
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        enterFullScreen()
 
         setupWebView()
         setupSwipeRefresh()
@@ -201,6 +247,7 @@ class MainActivity : AppCompatActivity() {
     private fun savedUrl(): String = prefs.getString(KEY_URL, DEFAULT_URL) ?: DEFAULT_URL
 
     private fun loadHome() {
+        applyTranslateCookie()
         if (!isOnline()) {
             showError(getString(R.string.error_no_internet))
             return
@@ -276,6 +323,7 @@ class MainActivity : AppCompatActivity() {
             swipeRefresh.isRefreshing = false
             CookieManager.getInstance().flush()
             if (!mainFrameFailed) hideError()
+            injectTranslator(view)
         }
 
         override fun onReceivedError(
@@ -467,7 +515,12 @@ class MainActivity : AppCompatActivity() {
 
                 runOnUiThread {
                     toast(getString(R.string.file_saved, fileName))
-                    shareFile(local, finalMime)
+                    when (prefs.getInt(Cfg.INVOICE_ACTION, 0)) {
+                        0 -> shareFile(local, finalMime)
+                        1 -> if (isPdf) printPdf(local) else openFile(local, finalMime)
+                        2 -> openFile(local, finalMime)
+                        else -> Unit   // saved to Downloads only
+                    }
                 }
             } catch (e: Exception) {
                 runOnUiThread { toast(getString(R.string.download_failed)) }
@@ -595,13 +648,15 @@ class MainActivity : AppCompatActivity() {
         val bar = findViewById<View>(R.id.fabBar)
         val home = findViewById<ImageButton>(R.id.homeButton)
         val gear = findViewById<ImageButton>(R.id.settingsButton)
+        val lang = findViewById<ImageButton>(R.id.langButton)
 
+        lang.setOnClickListener { showLanguagePicker() }
         home.setOnClickListener { goHome() }
         home.setOnLongClickListener { toast(getString(R.string.drag_hint)); true }
         gear.setOnClickListener { toast(getString(R.string.hold_for_settings)) }
         gear.setOnLongClickListener { askPinThenSettings(); true }
 
-        makeDraggable(bar, listOf(home, gear))
+        makeDraggable(bar, listOf(home, lang, gear))
         applyAppearance()
         bar.post { restoreFabPosition(bar) }
     }
@@ -733,7 +788,7 @@ class MainActivity : AppCompatActivity() {
                     webView.canGoBack() -> webView.goBack()
                     else -> {
                         val now = System.currentTimeMillis()
-                        if (now - lastBackPress < 2000) {
+                        if (!prefs.getBoolean(Cfg.EXIT_CONFIRM, true) || now - lastBackPress < 2000) {
                             finish()
                         } else {
                             lastBackPress = now
@@ -782,9 +837,14 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun exitFullScreen() {
+        WindowCompat.setDecorFitsSystemWindows(window, true)
+        WindowInsetsControllerCompat(window, window.decorView).show(WindowInsetsCompat.Type.systemBars())
+    }
+
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if (hasFocus) enterFullScreen()
+        if (hasFocus && prefs.getBoolean(Cfg.FULLSCREEN, true)) enterFullScreen()
     }
 
     // ---------------- Admin settings (PIN protected) ----------------
@@ -795,6 +855,7 @@ class MainActivity : AppCompatActivity() {
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
             applyAppearance()
             if (r.data?.getBooleanExtra(SettingsActivity.EXTRA_RELOAD, false) == true) {
+                applyTranslateCookie()
                 webView.clearHistory()
                 loadHome()
             }
@@ -810,19 +871,163 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** Apply display size, floating-button icon/color and position from settings. */
+    /** Apply every look & behavior setting: zoom, screen, floating bar. */
     private fun applyAppearance() {
         webView.settings.textZoom = prefs.getInt(KEY_ZOOM, Cfg.DEF_ZOOM)
+
+        if (prefs.getBoolean(Cfg.KEEP_SCREEN, true)) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        if (prefs.getBoolean(Cfg.FULLSCREEN, true)) enterFullScreen() else exitFullScreen()
+        swipeRefresh.isEnabled = prefs.getBoolean(Cfg.PULL_REFRESH, true)
+
         val icons = intArrayOf(R.drawable.ic_fuel, R.drawable.ic_home, R.drawable.ic_drop, R.drawable.ic_receipt)
-        findViewById<ImageButton>(R.id.homeButton).setImageResource(
-            icons[prefs.getInt(Cfg.FAB_ICON, 0).coerceIn(0, icons.size - 1)]
-        )
+        val home = findViewById<ImageButton>(R.id.homeButton)
+        val lang = findViewById<ImageButton>(R.id.langButton)
+        val gear = findViewById<ImageButton>(R.id.settingsButton)
+        home.setImageResource(icons[prefs.getInt(Cfg.FAB_ICON, 0).coerceIn(0, icons.size - 1)])
+
+        val showHome = prefs.getBoolean(Cfg.FAB_SHOW_HOME, true)
+        val showLang = prefs.getBoolean(Cfg.FAB_SHOW_LANG, true)
+        home.visibility = if (showHome) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.divHome).visibility = if (showHome) View.VISIBLE else View.GONE
+        lang.visibility = if (showLang) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.divLang).visibility = if (showLang) View.VISIBLE else View.GONE
+
+        val size = dp(intArrayOf(38, 44, 54)[prefs.getInt(Cfg.FAB_SIZE, 1).coerceIn(0, 2)])
+        listOf(home, lang, gear).forEach { b ->
+            b.layoutParams = b.layoutParams.apply { width = size; height = size }
+            val pad = (size * 0.24f).toInt()
+            b.setPadding(pad, pad, pad, pad)
+        }
+
         val bar = findViewById<View>(R.id.fabBar)
+        bar.alpha = prefs.getInt(Cfg.FAB_ALPHA, 100) / 100f
         bar.background = GradientDrawable().apply {
-            cornerRadius = dp(28).toFloat()
+            cornerRadius = (size * 0.64f)
             setColor(ColorUtils.setAlphaComponent(prefs.getInt(Cfg.FAB_COLOR, Color.parseColor("#081A32")), 0xD9))
         }
         if (prefs.getFloat(KEY_FAB_X, -1f) < 0f) { bar.translationX = 0f; bar.translationY = 0f }
+        else bar.post { restoreFabPosition(bar) }
+    }
+
+    // ---------------- Page translation (for foreign workers) ----------------
+
+    private fun pageLang(): String = prefs.getString(Cfg.PAGE_LANG, "").orEmpty().let { if (it == "ar") "" else it }
+
+    /** Google's translator reads the "googtrans" cookie; set or clear it for the system's site. */
+    private fun applyTranslateCookie() {
+        val lang = pageLang()
+        val cm = CookieManager.getInstance()
+        val expired = "expires=Thu, 01 Jan 1970 00:00:00 GMT"
+        listOfNotNull(webView.url, savedUrl()).mapNotNull { Uri.parse(it) }
+            .filter { it.host != null && (it.scheme == "http" || it.scheme == "https") }
+            .distinctBy { it.authority }
+            .forEach { u ->
+                val origin = "${u.scheme}://${u.authority}"
+                val host = u.host!!
+                val parts = host.split(".")
+                val domains = (0 until (parts.size - 1).coerceAtLeast(0)).map { "." + parts.drop(it).joinToString(".") }
+                cm.setCookie(origin, "googtrans=; $expired; path=/")
+                domains.forEach { d -> cm.setCookie(origin, "googtrans=; $expired; path=/; domain=$d") }
+                if (lang.isNotEmpty()) cm.setCookie(origin, "googtrans=/ar/$lang; path=/")
+            }
+        cm.flush()
+    }
+
+    private fun injectTranslator(view: WebView) {
+        val lang = pageLang()
+        if (lang.isEmpty()) return
+        view.evaluateJavascript(TRANSLATE_JS.replace("__LANG__", lang), null)
+    }
+
+    /** Language list for workers (no password needed). */
+    private fun showLanguagePicker() {
+        val sheet = BottomSheetDialog(this)
+        val current = pageLang().ifEmpty { "ar" }
+        val list = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dp(8), 0, dp(20))
+        }
+        list.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(20), dp(12), dp(20), dp(12))
+            addView(ImageView(context).apply {
+                setImageResource(R.drawable.ic_language)
+                imageTintList = ColorStateList.valueOf(Cfg.APEX_BLUE)
+            }, LinearLayout.LayoutParams(dp(26), dp(26)))
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(12), 0, dp(12), 0)
+                addView(TextView(context).apply {
+                    text = getString(R.string.choose_language)
+                    textSize = 20f; setTextColor(Color.parseColor("#262626"))
+                    setTypeface(typeface, Typeface.BOLD)
+                })
+                addView(TextView(context).apply {
+                    text = getString(R.string.choose_language_sub)
+                    textSize = 13.5f; setTextColor(Color.parseColor("#707070"))
+                })
+            })
+        })
+        list.addView(View(this).apply { setBackgroundColor(Color.parseColor("#E2E2E2")) },
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)))
+
+        Cfg.LANGS.forEach { l ->
+            val selected = l.code == current
+            list.addView(LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(20), dp(12), dp(20), dp(12))
+                minimumHeight = dp(64)
+                isClickable = true
+                val tv = TypedValue()
+                theme.resolveAttribute(android.R.attr.selectableItemBackground, tv, true)
+                setBackgroundResource(tv.resourceId)
+                if (selected) setBackgroundColor(Color.parseColor("#EAF3FC"))
+                addView(TextView(context).apply { text = l.flag; textSize = 28f })
+                addView(LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(dp(16), 0, dp(16), 0)
+                    addView(TextView(context).apply {
+                        text = l.native; textSize = 18f
+                        setTextColor(if (selected) Cfg.APEX_BLUE else Color.parseColor("#262626"))
+                        setTypeface(typeface, Typeface.BOLD)
+                    })
+                    addView(TextView(context).apply {
+                        text = l.english; textSize = 13f; setTextColor(Color.parseColor("#707070"))
+                    })
+                }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                if (selected) addView(ImageView(context).apply {
+                    setImageResource(R.drawable.ic_check)
+                    imageTintList = ColorStateList.valueOf(Cfg.APEX_BLUE)
+                }, LinearLayout.LayoutParams(dp(26), dp(26)))
+                setOnClickListener {
+                    sheet.dismiss()
+                    if (!selected) setPageLanguage(l)
+                }
+            })
+        }
+        sheet.setContentView(ScrollView(this).apply { addView(list) })
+        sheet.show()
+    }
+
+    private fun setPageLanguage(l: Cfg.Lang) {
+        val original = l.code == "ar"
+        prefs.edit().putString(Cfg.PAGE_LANG, if (original) "" else l.code).apply()
+        applyTranslateCookie()
+        if (!original) toast(getString(R.string.translating_to, l.native))
+
+        // App buttons and messages follow: Arabic stays Arabic, any other language uses English.
+        val ui = if (original) "ar" else "en"
+        prefs.edit().putString(Cfg.APP_LANG, ui).apply()
+        if (Cfg.uiLang(this) != ui) {
+            AppCompatDelegate.setApplicationLocales(LocaleListCompat.forLanguageTags(ui))  // recreates & reloads
+        } else if (webView.url.isNullOrBlank()) {
+            loadHome()
+        } else {
+            webView.reload()
+        }
     }
 
     private fun wrap(view: View): View = LinearLayout(this).apply {

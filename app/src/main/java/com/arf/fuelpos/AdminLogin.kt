@@ -10,12 +10,12 @@ import android.widget.TextView
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.textfield.TextInputEditText
 
-/** Full-screen, dark admin sign-in (username + password) before opening settings. */
+/** Full-screen Oracle APEX-style admin sign-in (username + password) before opening settings. */
 object AdminLogin {
 
     fun show(a: Activity, onSuccess: () -> Unit) {
         val p = Cfg.prefs(a)
-        val dialog = Dialog(a, R.style.Theme_FuelPOS_AdminDialog)
+        val dialog = Dialog(a, R.style.Theme_FuelPOS_ApexDialog)
         val view = a.layoutInflater.inflate(R.layout.dialog_admin_login, null)
         dialog.setContentView(view)
         dialog.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
@@ -25,6 +25,8 @@ object AdminLogin {
         val error = view.findViewById<TextView>(R.id.loginError)
         val card = view.findViewById<View>(R.id.loginCard)
         user.setText(p.getString(Cfg.ADMIN_USER, Cfg.DEF_USER))
+        view.findViewById<TextView>(R.id.loginFooter).text =
+            a.getString(R.string.app_name) + " • v" + BuildConfig.VERSION_NAME
 
         fun attempt() {
             val okUser = user.text.toString().trim()

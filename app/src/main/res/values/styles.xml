@@ -1,45 +1,84 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="AdminField" parent="Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+    <!-- Oracle APEX (Universal Theme - Vita) look for the admin screens -->
+    <style name="ApexField" parent="Widget.MaterialComponents.TextInputLayout.OutlinedBox">
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">wrap_content</item>
-        <item name="boxCornerRadiusTopStart">16dp</item>
-        <item name="boxCornerRadiusTopEnd">16dp</item>
-        <item name="boxCornerRadiusBottomStart">16dp</item>
-        <item name="boxCornerRadiusBottomEnd">16dp</item>
-        <item name="boxStrokeWidth">2dp</item>
-        <item name="boxStrokeWidthFocused">2.5dp</item>
-        <item name="boxStrokeColor">@color/admin_box_stroke</item>
-        <item name="boxBackgroundColor">#0F1A33</item>
-        <item name="hintTextColor">#93C5FD</item>
-        <item name="android:textColorHint">#8A9BC2</item>
-        <item name="startIconTint">#8FB4FF</item>
+        <item name="boxCornerRadiusTopStart">6dp</item>
+        <item name="boxCornerRadiusTopEnd">6dp</item>
+        <item name="boxCornerRadiusBottomStart">6dp</item>
+        <item name="boxCornerRadiusBottomEnd">6dp</item>
+        <item name="boxStrokeWidth">1.5dp</item>
+        <item name="boxStrokeWidthFocused">2dp</item>
+        <item name="boxStrokeColor">@color/apex_box_stroke</item>
+        <item name="boxBackgroundColor">#FFFFFF</item>
+        <item name="hintTextColor">@color/apex_blue</item>
+        <item name="android:textColorHint">#707070</item>
+        <item name="startIconTint">#707070</item>
+        <item name="endIconTint">#707070</item>
+        <item name="helperTextTextColor">@color/apex_muted_csl</item>
         <item name="boxBackgroundMode">outline</item>
     </style>
 
-    <style name="AdminFieldText">
+    <style name="ApexSelect" parent="Widget.MaterialComponents.TextInputLayout.OutlinedBox.ExposedDropdownMenu">
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">wrap_content</item>
-        <item name="android:minHeight">62dp</item>
-        <item name="android:textColor">#FFFFFF</item>
-        <item name="android:textSize">18sp</item>
+        <item name="boxCornerRadiusTopStart">6dp</item>
+        <item name="boxCornerRadiusTopEnd">6dp</item>
+        <item name="boxCornerRadiusBottomStart">6dp</item>
+        <item name="boxCornerRadiusBottomEnd">6dp</item>
+        <item name="boxStrokeWidth">1.5dp</item>
+        <item name="boxStrokeWidthFocused">2dp</item>
+        <item name="boxStrokeColor">@color/apex_box_stroke</item>
+        <item name="boxBackgroundColor">#FFFFFF</item>
+        <item name="hintTextColor">@color/apex_blue</item>
+        <item name="android:textColorHint">#707070</item>
+        <item name="endIconTint">#404040</item>
+        <item name="helperTextTextColor">@color/apex_muted_csl</item>
+    </style>
+
+    <style name="ApexFieldText">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:minHeight">58dp</item>
+        <item name="android:textColor">#262626</item>
+        <item name="android:textSize">16.5sp</item>
+    </style>
+
+    <!-- Big login fields -->
+    <style name="ApexLoginField" parent="ApexField">
+        <item name="boxCornerRadiusTopStart">10dp</item>
+        <item name="boxCornerRadiusTopEnd">10dp</item>
+        <item name="boxCornerRadiusBottomStart">10dp</item>
+        <item name="boxCornerRadiusBottomEnd">10dp</item>
+        <item name="boxStrokeWidth">2dp</item>
+        <item name="boxStrokeWidthFocused">2.5dp</item>
+    </style>
+
+    <style name="ApexLoginText" parent="ApexFieldText">
+        <item name="android:minHeight">64dp</item>
+        <item name="android:textSize">19sp</item>
         <item name="android:textDirection">ltr</item>
         <item name="android:singleLine">true</item>
     </style>
 
-    <style name="Theme.FuelPOS.Admin" parent="Theme.MaterialComponents.NoActionBar">
-        <item name="colorPrimary">@color/royal_blue</item>
-        <item name="colorSecondary">#60A5FA</item>
-        <item name="colorAccent">#60A5FA</item>
-        <item name="android:windowBackground">#0B1630</item>
-        <item name="android:statusBarColor">#0B1630</item>
-        <item name="android:navigationBarColor">#070F22</item>
+    <style name="Theme.FuelPOS.Apex" parent="Theme.MaterialComponents.Light.NoActionBar">
+        <item name="colorPrimary">@color/apex_blue</item>
+        <item name="colorPrimaryVariant">@color/apex_blue_dark</item>
+        <item name="colorSecondary">@color/apex_blue</item>
+        <item name="colorAccent">@color/apex_blue</item>
+        <item name="android:windowBackground">@color/apex_body</item>
+        <item name="android:statusBarColor">@color/apex_blue_dark</item>
+        <item name="android:navigationBarColor">#FFFFFF</item>
     </style>
 
-    <style name="Theme.FuelPOS.AdminDialog" parent="Theme.FuelPOS.Admin">
+    <style name="Theme.FuelPOS.ApexDialog" parent="Theme.FuelPOS.Apex">
         <item name="android:windowIsFloating">false</item>
-        <item name="android:windowFullscreen">false</item>
         <item name="android:windowNoTitle">true</item>
-        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowBackground">@color/apex_body</item>
     </style>
+
+    <!-- kept so older references still resolve -->
+    <style name="Theme.FuelPOS.Admin" parent="Theme.FuelPOS.Apex" />
+    <style name="Theme.FuelPOS.AdminDialog" parent="Theme.FuelPOS.ApexDialog" />
 </resources>

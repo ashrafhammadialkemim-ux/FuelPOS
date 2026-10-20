@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.textfield.TextInputLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    style="@style/ApexSelect"
+    android:layout_marginTop="14dp">
+
+    <com.google.android.material.textfield.MaterialAutoCompleteTextView
+        android:id="@+id/selectInput"
+        style="@style/ApexFieldText"
+        android:inputType="none"
+        android:paddingStart="14dp"
+        android:paddingEnd="14dp" />
+</com.google.android.material.textfield.TextInputLayout>
