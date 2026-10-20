@@ -11,8 +11,8 @@ android {
         applicationId = "com.arf.fuelpos"
         minSdk = 24
         targetSdk = 34
-        versionCode = 4
-        versionName = "1.3"
+        versionCode = 5
+        versionName = "1.4"
     }
 
     // Fixed signing key kept in the repo, so every new build installs as an

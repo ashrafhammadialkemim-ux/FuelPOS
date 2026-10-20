@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_admin"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:padding="22dp">
+
+        <LinearLayout
+            android:id="@+id/loginCard"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:maxWidth="460dp"
+            android:background="@drawable/bg_admin_card"
+            android:elevation="10dp"
+            android:gravity="center_horizontal"
+            android:orientation="vertical"
+            android:paddingStart="22dp"
+            android:paddingTop="30dp"
+            android:paddingEnd="22dp"
+            android:paddingBottom="24dp">
+
+            <FrameLayout
+                android:layout_width="92dp"
+                android:layout_height="92dp"
+                android:background="@drawable/bg_logo_ring"
+                android:padding="8dp">
+
+                <ImageView
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:contentDescription="@null"
+                    android:src="@mipmap/ic_launcher" />
+            </FrameLayout>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="18dp"
+                android:text="@string/admin_login_title"
+                android:textColor="#FFFFFF"
+                android:textSize="24sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:gravity="center"
+                android:text="@string/admin_login_subtitle"
+                android:textColor="#94A3C4"
+                android:textSize="14.5sp" />
+
+            <com.google.android.material.textfield.TextInputLayout
+                android:id="@+id/userLayout"
+                style="@style/AdminField"
+                android:layout_marginTop="28dp"
+                android:hint="@string/username"
+                app:startIconDrawable="@drawable/ic_person">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/userInput"
+                    style="@style/AdminFieldText"
+                    android:inputType="textCapCharacters|textNoSuggestions" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <com.google.android.material.textfield.TextInputLayout
+                android:id="@+id/passLayout"
+                style="@style/AdminField"
+                android:layout_marginTop="16dp"
+                android:hint="@string/password"
+                app:endIconMode="password_toggle"
+                app:endIconTint="#94A3C4"
+                app:startIconDrawable="@drawable/ic_lock">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/passInput"
+                    style="@style/AdminFieldText"
+                    android:imeOptions="actionDone"
+                    android:inputType="textPassword" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <TextView
+                android:id="@+id/loginError"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:gravity="center"
+                android:text="@string/login_failed"
+                android:textColor="#F87171"
+                android:textSize="14sp"
+                android:visibility="gone" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/loginButton"
+                android:layout_width="match_parent"
+                android:layout_height="60dp"
+                android:layout_marginTop="22dp"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"
+                android:text="@string/login"
+                android:textColor="#FFFFFF"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                app:backgroundTint="@color/royal_blue"
+                app:cornerRadius="16dp"
+                app:icon="@drawable/ic_shield"
+                app:iconGravity="textStart"
+                app:iconPadding="10dp"
+                app:iconTint="#FFFFFF" />
+
+            <TextView
+                android:id="@+id/loginCancel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:padding="10dp"
+                android:text="@string/cancel"
+                android:textColor="#94A3C4"
+                android:textSize="15.5sp" />
+        </LinearLayout>
+    </LinearLayout>
+</ScrollView>

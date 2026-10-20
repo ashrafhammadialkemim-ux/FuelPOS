@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.textfield.TextInputLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    style="@style/AdminField"
+    android:layout_marginTop="12dp">
+
+    <com.google.android.material.textfield.TextInputEditText
+        android:id="@+id/fieldInput"
+        style="@style/AdminFieldText"
+        android:minHeight="56dp"
+        android:singleLine="false"
+        android:textDirection="locale"
+        android:textSize="16sp" />
+</com.google.android.material.textfield.TextInputLayout>

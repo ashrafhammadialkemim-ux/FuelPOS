@@ -31,6 +31,7 @@
             android:background="@drawable/bg_leave_icon">
 
             <ImageView
+                android:id="@+id/leaveIcon"
                 android:layout_width="34dp"
                 android:layout_height="34dp"
                 android:layout_gravity="center"

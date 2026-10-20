@@ -18,17 +18,13 @@ import android.view.animation.LinearInterpolator
  */
 class AnimatedBorderDrawable(
     private val strokePx: Float,
-    private val radiusPx: Float
+    private val radiusPx: Float,
+    private val colors: IntArray,
+    fillColor: Int,
+    speedMs: Long
 ) : Drawable() {
 
-    private val colors = intArrayOf(
-        Color.parseColor("#DC2626"), // red
-        Color.parseColor("#F97316"), // orange
-        Color.parseColor("#7F1D1D"), // maroon
-        Color.parseColor("#F43F5E"), // rose
-        Color.parseColor("#DC2626")
-    )
-    private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#FFF7F7") }
+    private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = fillColor }
     private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeWidth = strokePx
@@ -39,7 +35,7 @@ class AnimatedBorderDrawable(
     private var shader: SweepGradient? = null
 
     private val animator = ValueAnimator.ofFloat(0f, 360f).apply {
-        duration = 3500
+        duration = speedMs.coerceIn(800, 12000)
         repeatCount = ValueAnimator.INFINITE
         interpolator = LinearInterpolator()
         addUpdateListener {

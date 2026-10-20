@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="AdminField" parent="Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="boxCornerRadiusTopStart">16dp</item>
+        <item name="boxCornerRadiusTopEnd">16dp</item>
+        <item name="boxCornerRadiusBottomStart">16dp</item>
+        <item name="boxCornerRadiusBottomEnd">16dp</item>
+        <item name="boxStrokeWidth">2dp</item>
+        <item name="boxStrokeWidthFocused">2.5dp</item>
+        <item name="boxStrokeColor">@color/admin_box_stroke</item>
+        <item name="boxBackgroundColor">#0F1A33</item>
+        <item name="hintTextColor">#93C5FD</item>
+        <item name="android:textColorHint">#8A9BC2</item>
+        <item name="startIconTint">#8FB4FF</item>
+        <item name="boxBackgroundMode">outline</item>
+    </style>
+
+    <style name="AdminFieldText">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:minHeight">62dp</item>
+        <item name="android:textColor">#FFFFFF</item>
+        <item name="android:textSize">18sp</item>
+        <item name="android:textDirection">ltr</item>
+        <item name="android:singleLine">true</item>
+    </style>
+
+    <style name="Theme.FuelPOS.Admin" parent="Theme.MaterialComponents.NoActionBar">
+        <item name="colorPrimary">@color/royal_blue</item>
+        <item name="colorSecondary">#60A5FA</item>
+        <item name="colorAccent">#60A5FA</item>
+        <item name="android:windowBackground">#0B1630</item>
+        <item name="android:statusBarColor">#0B1630</item>
+        <item name="android:navigationBarColor">#070F22</item>
+    </style>
+
+    <style name="Theme.FuelPOS.AdminDialog" parent="Theme.FuelPOS.Admin">
+        <item name="android:windowIsFloating">false</item>
+        <item name="android:windowFullscreen">false</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+    </style>
+</resources>

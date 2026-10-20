@@ -16,6 +16,8 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.GradientDrawable
+import androidx.core.graphics.ColorUtils
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.Uri
@@ -84,11 +86,9 @@ class MainActivity : AppCompatActivity() {
     companion object {
         const val DEFAULT_URL =
             "http://arfksa.dyndns.org:987/ords/f?p=234:2:4549823393311::NO::P2_OST_SYS_CODE:2"
-        private const val DEFAULT_PIN = "1234"
 
         private const val PREFS = "fuel_pos_prefs"
         private const val KEY_URL = "server_url"
-        private const val KEY_PIN = "admin_pin"
         private const val KEY_FIRST_RUN_DONE = "first_run_done"
         private const val KEY_HOME = "home_url"
         private const val KEY_ZOOM = "text_zoom"
@@ -156,8 +156,9 @@ class MainActivity : AppCompatActivity() {
 
     /** Make sure a PIN exists. The URL is entered by the admin on first launch. */
     private fun ensureDefaults() {
-        if (prefs.getString(KEY_PIN, null) == null) {
-            prefs.edit().putString(KEY_PIN, DEFAULT_PIN).apply()
+        if (prefs.getString(Cfg.ADMIN_USER, null) == null) {
+            prefs.edit().putString(Cfg.ADMIN_USER, Cfg.DEF_USER)
+                .putString(Cfg.ADMIN_PASS, Cfg.DEF_PASS).apply()
         }
     }
 
@@ -237,7 +238,7 @@ class MainActivity : AppCompatActivity() {
             builtInZoomControls = true
             displayZoomControls = false
             setSupportZoom(true)
-            textZoom = prefs.getInt(KEY_ZOOM, 100)
+            textZoom = prefs.getInt(KEY_ZOOM, Cfg.DEF_ZOOM)
             defaultTextEncodingName = "utf-8"
             // Present as normal mobile Chrome so APEX serves its standard pages
             userAgentString = userAgentString.replace("; wv", "")
@@ -390,7 +391,8 @@ class MainActivity : AppCompatActivity() {
         ): Boolean {
             val toHome = homeNavigationPending
             homeNavigationPending = false
-            showLeaveDialog(
+            LeaveDialog.show(
+                this@MainActivity,
                 toHome = toHome,
                 onStay = { result.cancel() },
                 onLeave = { result.confirm() }
@@ -600,6 +602,7 @@ class MainActivity : AppCompatActivity() {
         gear.setOnLongClickListener { askPinThenSettings(); true }
 
         makeDraggable(bar, listOf(home, gear))
+        applyAppearance()
         bar.post { restoreFabPosition(bar) }
     }
 
@@ -672,74 +675,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ---------------- Styled in-app dialogs ----------------
-
-    private fun showLeaveDialog(toHome: Boolean, onStay: () -> Unit, onLeave: () -> Unit) {
-        val view = layoutInflater.inflate(R.layout.dialog_leave, null)
-        view.findViewById<TextView>(R.id.leaveMessage).setText(
-            if (toHome) R.string.leave_message_home else R.string.leave_message
-        )
-
-        // Animated gradient border on the "leave" button
-        val border = AnimatedBorderDrawable(dp(2).toFloat() + 0.5f, dp(16).toFloat())
-        val leaveBtn = view.findViewById<FrameLayout>(R.id.leaveButton)
-        leaveBtn.background = border
-        view.findViewById<TextView>(R.id.leaveButtonText).apply {
-            setText(if (toHome) R.string.go_home_anyway else R.string.leave_page)
-            val icon = ContextCompat.getDrawable(context, if (toHome) R.drawable.ic_home else R.drawable.ic_leave)!!.mutate()
-            icon.setTint(ContextCompat.getColor(context, R.color.danger_dark))
-            icon.setBounds(0, 0, dp(22), dp(22))
-            setCompoundDrawablesRelative(icon, null, null, null)
-        }
-
-        // Soft blue shadow under the primary button
-        val stay = view.findViewById<MaterialButton>(R.id.stayButton)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            val blue = ContextCompat.getColor(this, R.color.royal_blue)
-            stay.outlineSpotShadowColor = blue
-            stay.outlineAmbientShadowColor = blue
-        }
-
-        // Breathing pulse ring around the top icon
-        val ring = view.findViewById<View>(R.id.pulseRing)
-        val pulse = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = 1800
-            repeatCount = ValueAnimator.INFINITE
-            interpolator = DecelerateInterpolator()
-            addUpdateListener {
-                val t = it.animatedValue as Float
-                ring.scaleX = 1f + 0.42f * t
-                ring.scaleY = 1f + 0.42f * t
-                ring.alpha = 1f - t
-            }
-        }
-        val iconBg = view.findViewById<View>(R.id.leaveIconBg)
-        val breathe = ObjectAnimator.ofPropertyValuesHolder(
-            iconBg,
-            PropertyValuesHolder.ofFloat(View.SCALE_X, 1f, 1.06f),
-            PropertyValuesHolder.ofFloat(View.SCALE_Y, 1f, 1.06f)
-        ).apply {
-            duration = 900
-            repeatCount = ValueAnimator.INFINITE
-            repeatMode = ValueAnimator.REVERSE
-            interpolator = AccelerateDecelerateInterpolator()
-        }
-
-        val dialog = AlertDialog.Builder(this).setView(view).setCancelable(true).create()
-        var handled = false
-        stay.setOnClickListener { handled = true; dialog.dismiss(); onStay() }
-        leaveBtn.setOnClickListener { handled = true; dialog.dismiss(); onLeave() }
-        dialog.setOnShowListener { border.start(); pulse.start(); breathe.start() }
-        dialog.setOnDismissListener {
-            border.stop(); pulse.cancel(); breathe.cancel()
-            if (!handled) { handled = true; onStay() }
-        }
-        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-        dialog.show()
-        dialog.window?.setLayout(
-            (resources.displayMetrics.widthPixels * 0.9).toInt().coerceAtMost(dp(440)),
-            ViewGroup.LayoutParams.WRAP_CONTENT
-        )
-    }
 
     private fun styledDialog(
         icon: Int, accent: Int, title: String, message: String?,
@@ -856,125 +791,38 @@ class MainActivity : AppCompatActivity() {
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
+    private val settingsLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
+            applyAppearance()
+            if (r.data?.getBooleanExtra(SettingsActivity.EXTRA_RELOAD, false) == true) {
+                webView.clearHistory()
+                loadHome()
+            }
+        }
+
+    /** Admin sign-in (username + password), then the settings screen. */
     private fun askPinThenSettings() {
-        val input = EditText(this).apply {
-            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
-            hint = getString(R.string.pin_hint)
+        AdminLogin.show(this) {
+            settingsLauncher.launch(
+                Intent(this, SettingsActivity::class.java)
+                    .putExtra(SettingsActivity.EXTRA_CURRENT_URL, webView.url)
+            )
         }
-        AlertDialog.Builder(this)
-            .setTitle(R.string.admin_title)
-            .setView(wrap(input))
-            .setPositiveButton(android.R.string.ok) { _, _ ->
-                if (input.text.toString() == prefs.getString(KEY_PIN, DEFAULT_PIN)) {
-                    showSettingsDialog()
-                } else {
-                    toast(getString(R.string.wrong_pin))
-                }
-            }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
     }
 
-    private fun showSettingsDialog() {
-        val items = arrayOf(
-            getString(R.string.menu_url),
-            getString(R.string.menu_zoom),
-            getString(R.string.menu_set_home),
-            getString(R.string.menu_reset_home),
-            getString(R.string.menu_pin),
-            getString(R.string.menu_reset_buttons)
+    /** Apply display size, floating-button icon/color and position from settings. */
+    private fun applyAppearance() {
+        webView.settings.textZoom = prefs.getInt(KEY_ZOOM, Cfg.DEF_ZOOM)
+        val icons = intArrayOf(R.drawable.ic_fuel, R.drawable.ic_home, R.drawable.ic_drop, R.drawable.ic_receipt)
+        findViewById<ImageButton>(R.id.homeButton).setImageResource(
+            icons[prefs.getInt(Cfg.FAB_ICON, 0).coerceIn(0, icons.size - 1)]
         )
-        AlertDialog.Builder(this)
-            .setTitle(R.string.settings_menu_title)
-            .setItems(items) { _, which ->
-                when (which) {
-                    0 -> showUrlDialog()
-                    1 -> showZoomDialog()
-                    2 -> {
-                        webView.url?.let { prefs.edit().putString(KEY_HOME, it).apply() }
-                        toast(getString(R.string.home_set))
-                    }
-                    3 -> {
-                        prefs.edit().remove(KEY_HOME).apply()
-                        toast(getString(R.string.home_reset))
-                    }
-                    4 -> showPinDialog()
-                    5 -> {
-                        prefs.edit().remove(KEY_FAB_X).remove(KEY_FAB_Y).apply()
-                        findViewById<View>(R.id.fabBar).apply { translationX = 0f; translationY = 0f }
-                    }
-                }
-            }
-            .setNegativeButton(R.string.cancel, null)
-            .show()
-    }
-
-    private fun showUrlDialog() {
-        val urlInput = EditText(this).apply {
-            setText(savedUrl())
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
-            textDirection = View.TEXT_DIRECTION_LTR
-            setSelection(text.length)
+        val bar = findViewById<View>(R.id.fabBar)
+        bar.background = GradientDrawable().apply {
+            cornerRadius = dp(28).toFloat()
+            setColor(ColorUtils.setAlphaComponent(prefs.getInt(Cfg.FAB_COLOR, Color.parseColor("#081A32")), 0xD9))
         }
-        AlertDialog.Builder(this)
-            .setTitle(R.string.server_url_label)
-            .setView(wrap(urlInput))
-            .setPositiveButton(R.string.save) { _, _ ->
-                var url = urlInput.text.toString().trim()
-                if (url.isNotEmpty() && !url.startsWith("http://") && !url.startsWith("https://")) {
-                    url = "http://$url"
-                }
-                if (url.isEmpty() || !URLUtil.isValidUrl(url)) {
-                    toast(getString(R.string.invalid_url)); return@setPositiveButton
-                }
-                prefs.edit().putString(KEY_URL, url).remove(KEY_HOME).apply()
-                toast(getString(R.string.saved))
-                webView.clearHistory()
-                loadHome()
-            }
-            .setNeutralButton(R.string.reset_default) { _, _ ->
-                prefs.edit().putString(KEY_URL, DEFAULT_URL).remove(KEY_HOME).apply()
-                toast(getString(R.string.reset_done))
-                webView.clearHistory()
-                loadHome()
-            }
-            .setNegativeButton(R.string.cancel, null)
-            .show()
-    }
-
-    private fun showZoomDialog() {
-        val labels = arrayOf(
-            getString(R.string.zoom_small), getString(R.string.zoom_normal),
-            getString(R.string.zoom_large), getString(R.string.zoom_xlarge)
-        )
-        val current = ZOOM_LEVELS.indexOf(prefs.getInt(KEY_ZOOM, 100)).coerceAtLeast(0)
-        AlertDialog.Builder(this)
-            .setTitle(R.string.menu_zoom)
-            .setSingleChoiceItems(labels, current) { d, which ->
-                val z = ZOOM_LEVELS[which]
-                prefs.edit().putInt(KEY_ZOOM, z).apply()
-                webView.settings.textZoom = z
-                d.dismiss()
-            }
-            .setNegativeButton(R.string.cancel, null)
-            .show()
-    }
-
-    private fun showPinDialog() {
-        val pinInput = EditText(this).apply {
-            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
-            hint = getString(R.string.new_pin_hint)
-        }
-        AlertDialog.Builder(this)
-            .setTitle(R.string.menu_pin)
-            .setView(wrap(pinInput))
-            .setPositiveButton(R.string.save) { _, _ ->
-                val pin = pinInput.text.toString().trim()
-                if (pin.length < 4) toast(getString(R.string.pin_too_short))
-                else { prefs.edit().putString(KEY_PIN, pin).apply(); toast(getString(R.string.saved)) }
-            }
-            .setNegativeButton(R.string.cancel, null)
-            .show()
+        if (prefs.getFloat(KEY_FAB_X, -1f) < 0f) { bar.translationX = 0f; bar.translationY = 0f }
     }
 
     private fun wrap(view: View): View = LinearLayout(this).apply {
