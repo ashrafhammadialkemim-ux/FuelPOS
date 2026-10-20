@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">النظام المالي</string>
+    <string name="app_name">فواتير المحطات</string>
 
     <string name="error_title">تعذّر الاتصال</string>
     <string name="error_message">تحقق من الإنترنت ثم اضغط إعادة المحاولة</string>
@@ -39,7 +39,11 @@
 
     <string name="home">الصفحة الرئيسية</string>
     <string name="leave_title">مغادرة الصفحة؟</string>
-    <string name="leave_message">لديك بيانات لم يتم حفظها بعد.\nإذا غادرت الآن قد تضيع هذه البيانات.</string>
+    <string name="leave_message">قد تفقد البيانات غير المحفوظة عند مغادرة هذه الصفحة.</string>
+    <string name="leave_message_home">قد تفقد البيانات غير المحفوظة عند الانتقال إلى الشاشة الرئيسية.</string>
+    <string name="go_home_anyway">الانتقال للرئيسية</string>
+    <string name="leave_page">مغادرة الصفحة</string>
+    <string name="share_invoice">إرسال الفاتورة</string>
     <string name="stay_here">البقاء ومتابعة العمل</string>
     <string name="leave_anyway">مغادرة بدون حفظ</string>
     <string name="alert_title">تنبيه</string>

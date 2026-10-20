@@ -2,11 +2,15 @@ package com.arf.fuelpos
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.content.ClipData
 import android.content.ContentValues
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
+import android.animation.ObjectAnimator
+import android.animation.PropertyValuesHolder
+import android.animation.ValueAnimator
 import android.content.res.ColorStateList
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
@@ -31,6 +35,9 @@ import android.text.InputType
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
+import android.view.animation.AccelerateDecelerateInterpolator
+import android.view.animation.DecelerateInterpolator
+import android.widget.FrameLayout
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.webkit.CookieManager
@@ -100,6 +107,7 @@ class MainActivity : AppCompatActivity() {
     private var fileCallback: ValueCallback<Array<Uri>>? = null
     private var mainFrameFailed = false
     private var lastBackPress = 0L
+    private var homeNavigationPending = false
 
     // ---------- File upload (Oracle APEX "Browse" fields) ----------
     private val fileChooserLauncher =
@@ -380,15 +388,12 @@ class MainActivity : AppCompatActivity() {
         override fun onJsBeforeUnload(
             view: WebView, url: String?, message: String?, result: android.webkit.JsResult
         ): Boolean {
-            styledDialog(
-                icon = R.drawable.ic_leave, accent = R.color.danger,
-                title = getString(R.string.leave_title),
-                message = getString(R.string.leave_message),
-                primaryText = getString(R.string.stay_here), primaryColor = R.color.primary,
-                onPrimary = { result.cancel() },          // stay on the page
-                secondaryText = getString(R.string.leave_anyway), secondaryColor = R.color.danger,
-                onSecondary = { result.confirm() },       // leave
-                onDismiss = { result.cancel() }
+            val toHome = homeNavigationPending
+            homeNavigationPending = false
+            showLeaveDialog(
+                toHome = toHome,
+                onStay = { result.cancel() },
+                onLeave = { result.confirm() }
             )
             return true
         }
@@ -460,7 +465,7 @@ class MainActivity : AppCompatActivity() {
 
                 runOnUiThread {
                     toast(getString(R.string.file_saved, fileName))
-                    if (isPdf) printPdf(local) else openFile(local, finalMime)
+                    shareFile(local, finalMime)
                 }
             } catch (e: Exception) {
                 runOnUiThread { toast(getString(R.string.download_failed)) }
@@ -534,6 +539,23 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /** Open the system share sheet with the file attached (WhatsApp, email, ...). */
+    private fun shareFile(file: File, mime: String) {
+        try {
+            val uri = FileProvider.getUriForFile(this, "$packageName.files", file)
+            val send = Intent(Intent.ACTION_SEND).apply {
+                type = mime
+                putExtra(Intent.EXTRA_STREAM, uri)
+                putExtra(Intent.EXTRA_SUBJECT, file.nameWithoutExtension)
+                clipData = ClipData.newRawUri(file.name, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(Intent.createChooser(send, getString(R.string.share_invoice)))
+        } catch (e: Exception) {
+            openFile(file, mime)
+        }
+    }
+
     private fun openFile(file: File, mime: String) {
         try {
             val uri = FileProvider.getUriForFile(this, "$packageName.files", file)
@@ -594,7 +616,10 @@ class MainActivity : AppCompatActivity() {
     private fun goHome() {
         if (!isOnline()) { showError(getString(R.string.error_no_internet)); return }
         hideError()
+        homeNavigationPending = true
         webView.loadUrl(homeUrl())
+        // If the page has nothing unsaved, no dialog appears; reset the flag shortly after.
+        webView.postDelayed({ homeNavigationPending = false }, 1500)
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -647,6 +672,74 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ---------------- Styled in-app dialogs ----------------
+
+    private fun showLeaveDialog(toHome: Boolean, onStay: () -> Unit, onLeave: () -> Unit) {
+        val view = layoutInflater.inflate(R.layout.dialog_leave, null)
+        view.findViewById<TextView>(R.id.leaveMessage).setText(
+            if (toHome) R.string.leave_message_home else R.string.leave_message
+        )
+
+        // Animated gradient border on the "leave" button
+        val border = AnimatedBorderDrawable(dp(2).toFloat() + 0.5f, dp(16).toFloat())
+        val leaveBtn = view.findViewById<FrameLayout>(R.id.leaveButton)
+        leaveBtn.background = border
+        view.findViewById<TextView>(R.id.leaveButtonText).apply {
+            setText(if (toHome) R.string.go_home_anyway else R.string.leave_page)
+            val icon = ContextCompat.getDrawable(context, if (toHome) R.drawable.ic_home else R.drawable.ic_leave)!!.mutate()
+            icon.setTint(ContextCompat.getColor(context, R.color.danger_dark))
+            icon.setBounds(0, 0, dp(22), dp(22))
+            setCompoundDrawablesRelative(icon, null, null, null)
+        }
+
+        // Soft blue shadow under the primary button
+        val stay = view.findViewById<MaterialButton>(R.id.stayButton)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            val blue = ContextCompat.getColor(this, R.color.royal_blue)
+            stay.outlineSpotShadowColor = blue
+            stay.outlineAmbientShadowColor = blue
+        }
+
+        // Breathing pulse ring around the top icon
+        val ring = view.findViewById<View>(R.id.pulseRing)
+        val pulse = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 1800
+            repeatCount = ValueAnimator.INFINITE
+            interpolator = DecelerateInterpolator()
+            addUpdateListener {
+                val t = it.animatedValue as Float
+                ring.scaleX = 1f + 0.42f * t
+                ring.scaleY = 1f + 0.42f * t
+                ring.alpha = 1f - t
+            }
+        }
+        val iconBg = view.findViewById<View>(R.id.leaveIconBg)
+        val breathe = ObjectAnimator.ofPropertyValuesHolder(
+            iconBg,
+            PropertyValuesHolder.ofFloat(View.SCALE_X, 1f, 1.06f),
+            PropertyValuesHolder.ofFloat(View.SCALE_Y, 1f, 1.06f)
+        ).apply {
+            duration = 900
+            repeatCount = ValueAnimator.INFINITE
+            repeatMode = ValueAnimator.REVERSE
+            interpolator = AccelerateDecelerateInterpolator()
+        }
+
+        val dialog = AlertDialog.Builder(this).setView(view).setCancelable(true).create()
+        var handled = false
+        stay.setOnClickListener { handled = true; dialog.dismiss(); onStay() }
+        leaveBtn.setOnClickListener { handled = true; dialog.dismiss(); onLeave() }
+        dialog.setOnShowListener { border.start(); pulse.start(); breathe.start() }
+        dialog.setOnDismissListener {
+            border.stop(); pulse.cancel(); breathe.cancel()
+            if (!handled) { handled = true; onStay() }
+        }
+        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        dialog.show()
+        dialog.window?.setLayout(
+            (resources.displayMetrics.widthPixels * 0.9).toInt().coerceAtMost(dp(440)),
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        )
+    }
 
     private fun styledDialog(
         icon: Int, accent: Int, title: String, message: String?,
